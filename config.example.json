@@ -1,0 +1,13 @@
+{
+  "owlet": {
+    "email": "you@example.com",
+    "password": "owlet-password",
+    "region": "world"
+  },
+  "huckleberry": {
+    "email": "you@example.com",
+    "password": "huckleberry-password",
+    "timezone": "America/New_York",
+    "child_name": null
+  }
+}

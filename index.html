@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Owlet Sleep Export</title>
+<meta name="description" content="Unofficial tool to export your baby's sleep sessions from an Owlet sock account.">
+<style>
+  :root {
+    --bg: #f7f6f2; --panel: #ffffff; --ink: #1d232b; --muted: #5d6673; --line: #dedbd2;
+    --accent: #3b5bdb; --accent-ink: #ffffff; --ok: #2b8a3e; --bad: #c92a2a; --warn: #a66300;
+    --code: #f0eee8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14171c; --panel: #1c2027; --ink: #e8eaed; --muted: #9aa3ae; --line: #2e343d;
+      --accent: #748ffc; --accent-ink: #0b0e13; --ok: #69db7c; --bad: #ff8787; --warn: #ffc078;
+      --code: #232831;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14171c; --panel: #1c2027; --ink: #e8eaed; --muted: #9aa3ae; --line: #2e343d;
+    --accent: #748ffc; --accent-ink: #0b0e13; --ok: #69db7c; --bad: #ff8787; --warn: #ffc078;
+    --code: #232831;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 20px; margin-bottom: 20px;
+  }
+  .notice { border-left: 4px solid var(--warn); font-size: 0.92rem; color: var(--muted); }
+  .notice strong { color: var(--ink); }
+  label { display: block; font-size: 0.85rem; font-weight: 600; margin: 12px 0 4px; }
+  input, select {
+    width: 100%; padding: 10px 12px; font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px;
+  }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+  .hint { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+  button {
+    margin-top: 18px; padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer;
+    background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px;
+  }
+  button[disabled] { opacity: 0.5; cursor: progress; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  ol.steps { list-style: none; padding: 0; margin: 0; }
+  ol.steps li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  ol.steps li:last-child { border-bottom: 0; }
+  .ico { font-weight: 700; text-align: center; }
+  .ok .ico { color: var(--ok); } .bad .ico { color: var(--bad); } .run .ico { color: var(--muted); }
+  .detail { font-size: 0.85rem; color: var(--muted); overflow-wrap: anywhere; }
+  .bad .detail { color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  td.num { text-align: right; }
+  .scroll { max-height: 420px; overflow: auto; margin-top: 12px; }
+  .hidden { display: none; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Owlet Sleep Export</h1>
+  <p class="sub">Download your baby's sleep history from an Owlet sock account as a CSV.</p>
+
+  <div class="panel notice">
+    <strong>Unofficial, use at your own risk.</strong> This tool is not affiliated with or endorsed by Owlet.
+    It uses undocumented APIs, which can break at any time, and automated access may go against Owlet's
+    terms of use, which could put your account at risk. Your login goes straight from this page to Google
+    (Owlet's login provider) and Owlet. Nothing is stored or sent anywhere else, except the optional relay below.
+  </div>
+
+  <form id="form" class="panel">
+    <div class="row">
+      <div>
+        <label for="email">Owlet email</label>
+        <input id="email" type="email" autocomplete="username" required>
+      </div>
+      <div>
+        <label for="password">Owlet password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="region">Account region</label>
+        <select id="region">
+          <option value="world">United States / rest of world</option>
+          <option value="europe">Europe</option>
+        </select>
+      </div>
+      <div>
+        <label for="relay">Relay URL (optional)</label>
+        <input id="relay" type="url" placeholder="https://your-relay.workers.dev">
+        <div class="hint">One Owlet login step refuses requests from web pages. A relay forwards just that step.</div>
+      </div>
+    </div>
+    <button id="go" type="submit">Export sleep history</button>
+  </form>
+
+  <section id="progress" class="panel hidden">
+    <ol id="steps" class="steps"></ol>
+  </section>
+
+  <section id="results" class="panel hidden">
+    <div id="summary"></div>
+    <button id="csv" class="secondary" type="button">Download CSV</button>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Start</th><th>End</th><th class="num">Hours</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+// Public constants from the Owlet Android app, as used by pyowletapi.
+const REGIONS = {
+  world: {
+    apiKey: "AIzaSyCsDZ8kWxQuLJAMVnmEhEkayH1TSxKXfGA",
+    mini: "https://ayla-sso.owletdata.com/mini/",
+    signin: "https://user-field-1a2039d9.aylanetworks.com/api/v1/token_sign_in",
+    base: "https://ads-field-1a2039d9.aylanetworks.com/apiv1",
+    appId: "sso-prod-3g-id",
+    appSecret: "sso-prod-UEjtnPCtFfjdwIwxqnC0OipxRFU",
+  },
+  europe: {
+    apiKey: "AIzaSyDm6EhV70wudwN3iOSq3vTjtsdGjdFLuuM",
+    mini: "https://ayla-sso.eu.owletdata.com/mini/",
+    signin: "https://user-field-eu-1a2039d9.aylanetworks.com/api/v1/token_sign_in",
+    base: "https://ads-field-eu-1a2039d9.aylanetworks.com/apiv1",
+    appId: "OwletCare-Android-EU-fw-id",
+    appSecret: "OwletCare-Android-EU-JKupMPBoj_Npce_9a95Pc8Qo0Mw",
+  },
+};
+
+const $ = (id) => document.getElementById(id);
+let sessions = [];
+
+// ---------------------------------------------------------------- step log
+
+function step(label) {
+  const li = document.createElement("li");
+  li.className = "run";
+  li.innerHTML = `<span class="ico">…</span><div><div class="label"></div><div class="detail"></div></div>`;
+  li.querySelector(".label").textContent = label;
+  $("steps").appendChild(li);
+  const set = (cls, ico, detail) => {
+    li.className = cls;
+    li.querySelector(".ico").textContent = ico;
+    li.querySelector(".detail").textContent = detail || "";
+  };
+  return {
+    ok: (d) => set("ok", "✓", d),
+    fail: (d) => set("bad", "✗", d),
+    note: (d) => { li.querySelector(".detail").textContent = d; },
+  };
+}
+
+// fetch() that tells a CORS/network block apart from an HTTP error.
+async function call(s, url, opts) {
+  let r;
+  try {
+    r = await fetch(url, opts);
+  } catch (e) {
+    const host = new URL(url).host;
+    s.fail(`Blocked before reaching ${host}. The browser refused the request (most likely the server ` +
+           `doesn't allow requests from web pages, i.e. CORS). ${e.message}`);
+    throw new Error("blocked");
+  }
+  if (!r.ok) {
+    const body = await r.text().catch(() => "");
+    s.fail(`HTTP ${r.status} from ${new URL(url).host}: ${body.slice(0, 200)}`);
+    throw new Error("http " + r.status);
+  }
+  return r.json();
+}
+
+// ---------------------------------------------------------------- Owlet login + history
+
+async function owletLogin(region, email, password, relay) {
+  const R = REGIONS[region];
+
+  let s = step("1. Sign in with Google (Owlet's login provider)");
+  const g = await call(s, `https://www.googleapis.com/identitytoolkit/v3/relyingparty/verifyPassword?key=${R.apiKey}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Android-Package": "com.owletcare.owletcare",
+      "X-Android-Cert": "2A3BC26DB0B8B0792DBE28E6FFDC2598F9B12B74",
+    },
+    body: JSON.stringify({ email, password, returnSecureToken: true }),
+  });
+  s.ok("Got Google ID token");
+
+  s = step("2. Get Owlet token" + (relay ? " (via relay)" : ""));
+  const miniUrl = relay ? `${relay.replace(/\/$/, "")}/mini?region=${region}` : R.mini;
+  const m = await call(s, miniUrl, { headers: { Authorization: g.idToken } });
+  s.ok("Got Owlet token");
+
+  s = step("3. Sign in to Owlet's device cloud (Ayla Networks)");
+  const a = await call(s, R.signin, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ app_id: R.appId, app_secret: R.appSecret, provider: "owl_id", token: m.mini_token }),
+  });
+  s.ok("Signed in");
+  return { base: R.base, headers: { Authorization: "auth_token " + a.access_token } };
+}
+
+async function fetchHistory(api, dsn, s) {
+  const url = `${api.base}/dsns/${dsn}/properties/MONITORING_SUMMARY/datapoints.json`;
+  const seen = new Map();
+  let end = null;
+  for (;;) {
+    const q = end ? `?filter[created_at_end_date]=${end}` : "";
+    const pts = (await call(s, url + q, { headers: api.headers })).map((p) => p.datapoint);
+    let added = 0;
+    for (const p of pts) {
+      const k = p.created_at + (p.value || "").slice(0, 64);
+      if (!seen.has(k)) { seen.set(k, p); added++; }
+    }
+    if (!added) break;
+    const oldest = pts.map((p) => p.created_at).sort()[0];
+    end = new Date(Date.parse(oldest) - 1000).toISOString().replace(/\.\d+Z$/, "Z");
+    s.note(`${seen.size} summaries, back to ${oldest.slice(0, 10)}`);
+  }
+  return [...seen.values()];
+}
+
+// ---------------------------------------------------------------- MONITORING_SUMMARY decoding
+// base64 -> 1 version byte, then frames of [u16 BE length][u8 checksum][protobuf].
+// Each protobuf = one 10-minute window. Field 25 = {1: {1: sleep start, 2: sleep end}}.
+
+function b64bytes(s) {
+  s = s + "=".repeat((4 - (s.length % 4)) % 4);
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function parsePb(b) {
+  const out = [];
+  let i = 0;
+  const varint = () => {
+    let r = 0, mul = 1, c;
+    do { c = b[i++]; if (c === undefined) throw new Error("eof"); r += (c & 0x7f) * mul; mul *= 128; } while (c & 0x80);
+    return r;
+  };
+  while (i < b.length) {
+    const key = varint(), f = Math.floor(key / 8), wt = key % 8;
+    if (f === 0) throw new Error("field 0");
+    let v;
+    if (wt === 0) v = varint();
+    else if (wt === 2) { const n = varint(); if (i + n > b.length) throw new Error("short"); v = b.subarray(i, i + n); i += n; }
+    else if (wt === 5) { i += 4; v = null; }
+    else if (wt === 1) { i += 8; v = null; }
+    else throw new Error("wire type " + wt);
+    out.push([f, v]);
+  }
+  return out;
+}
+
+function frames(raw) {
+  const out = [];
+  let i = 1;
+  while (i + 3 <= raw.length) {
+    const n = (raw[i] << 8) | raw[i + 1];
+    out.push(raw.subarray(i + 3, i + 3 + n));
+    i += 3 + n;
+  }
+  return out;
+}
+
+function sessionsFrom(points) {
+  const ends = new Map();
+  for (const p of points) {
+    if (!p.value) continue;
+    let raw;
+    try { raw = b64bytes(p.value); } catch { continue; }
+    for (const fr of frames(raw)) {
+      let fields;
+      try { fields = parsePb(fr); } catch { continue; }
+      for (const [f, v] of fields) {
+        if (f !== 25 || !(v instanceof Uint8Array)) continue;
+        try {
+          for (const [f2, inner] of parsePb(v)) {
+            if (f2 !== 1 || !(inner instanceof Uint8Array)) continue;
+            const starts = [], stops = [];
+            for (const [k, x] of parsePb(inner)) { if (k === 1) starts.push(x); if (k === 2) stops.push(x); }
+            for (const st of starts) {
+              if (!ends.has(st)) ends.set(st, new Set());
+              stops.forEach((e) => ends.get(st).add(e));
+            }
+          }
+        } catch { /* skip malformed */ }
+      }
+    }
+  }
+  return [...ends.entries()]
+    .filter(([, e]) => e.size)
+    .map(([st, e]) => [new Date(st * 1000), new Date(Math.max(...e) * 1000)])
+    .sort((a, b) => a[0] - b[0]);
+}
+
+// ---------------------------------------------------------------- UI
+
+const fmt = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ` +
+  `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+const hours = (a, b) => ((b - a) / 3600000).toFixed(2);
+
+function render() {
+  const tbody = $("rows");
+  tbody.textContent = "";
+  for (const [a, b] of [...sessions].reverse()) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td></td><td></td><td class="num"></td>`;
+    tr.children[0].textContent = fmt(a);
+    tr.children[1].textContent = fmt(b);
+    tr.children[2].textContent = hours(a, b);
+    tbody.appendChild(tr);
+  }
+  const first = sessions[0][0], last = sessions[sessions.length - 1][1];
+  $("summary").textContent =
+    `${sessions.length} sleep sessions from ${first.toLocaleDateString()} to ${last.toLocaleDateString()} (times in your local time zone).`;
+  $("results").classList.remove("hidden");
+}
+
+$("csv").addEventListener("click", () => {
+  const lines = ["start,end,hours", ...sessions.map(([a, b]) => `${fmt(a)},${fmt(b)},${hours(a, b)}`)];
+  const url = URL.createObjectURL(new Blob([lines.join("\n") + "\n"], { type: "text/csv" }));
+  const link = Object.assign(document.createElement("a"), { href: url, download: "owlet_sleep_export.csv" });
+  link.click();
+  URL.revokeObjectURL(url);
+});
+
+$("form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  $("go").disabled = true;
+  $("steps").textContent = "";
+  $("progress").classList.remove("hidden");
+  $("results").classList.add("hidden");
+  try {
+    const api = await owletLogin($("region").value, $("email").value.trim(), $("password").value, $("relay").value.trim());
+
+    let s = step("4. Find sock");
+    const devices = await call(s, `${api.base}/devices.json`, { headers: api.headers });
+    if (!devices.length) { s.fail("No Owlet devices on this account"); return; }
+    s.ok(devices.map((d) => `${d.device.product_name} (${d.device.dsn})`).join(", "));
+
+    sessions = [];
+    for (const d of devices) {
+      s = step(`5. Download sleep history for ${d.device.dsn}`);
+      const pts = await fetchHistory(api, d.device.dsn, s);
+      const found = sessionsFrom(pts);
+      s.ok(`${pts.length} summaries, ${found.length} sleep sessions`);
+      sessions.push(...found);
+    }
+    sessions.sort((a, b) => a[0] - b[0]);
+    if (sessions.length) render();
+    else step("No sleep sessions found").fail("The account's history had no completed sleep sessions.");
+  } catch (e) {
+    if (e.message !== "blocked" && !e.message.startsWith("http")) step("Unexpected error").fail(e.message);
+  } finally {
+    $("go").disabled = false;
+  }
+});
+</script>
+</body>
+</html>

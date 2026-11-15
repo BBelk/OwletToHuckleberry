@@ -1,0 +1,3 @@
+# Python 3.14+ (huckleberry-api requires it)
+pyowletapi==2025.4.10
+huckleberry-api==0.5.1

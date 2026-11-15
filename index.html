@@ -3,55 +3,68 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Owlet Sleep Export</title>
-<meta name="description" content="Unofficial tool to export your baby's sleep sessions from an Owlet sock account.">
+<title>Owlet to Huckleberry</title>
+<meta name="description" content="Unofficial tool to export baby sleep sessions from Owlet and import them into Huckleberry.">
+<link rel="icon" href="data:,">
 <style>
   :root {
     --bg: #f7f6f2; --panel: #ffffff; --ink: #1d232b; --muted: #5d6673; --line: #dedbd2;
     --accent: #3b5bdb; --accent-ink: #ffffff; --ok: #2b8a3e; --bad: #c92a2a; --warn: #a66300;
-    --code: #f0eee8;
+    --chip: #eef1fb; --chip-ink: #3b5bdb; --code: #f0eee8;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #14171c; --panel: #1c2027; --ink: #e8eaed; --muted: #9aa3ae; --line: #2e343d;
       --accent: #748ffc; --accent-ink: #0b0e13; --ok: #69db7c; --bad: #ff8787; --warn: #ffc078;
-      --code: #232831;
+      --chip: #262c3a; --chip-ink: #9fb2ff; --code: #232831;
     }
   }
   :root[data-theme="dark"] {
     --bg: #14171c; --panel: #1c2027; --ink: #e8eaed; --muted: #9aa3ae; --line: #2e343d;
     --accent: #748ffc; --accent-ink: #0b0e13; --ok: #69db7c; --bad: #ff8787; --warn: #ffc078;
-    --code: #232831;
+    --chip: #262c3a; --chip-ink: #9fb2ff; --code: #232831;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
     font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
-  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  main { max-width: 820px; margin: 0 auto; padding: 32px 16px 64px; }
   h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 1.1rem; margin: 0 0 4px; }
+  h2 .n {
+    display: inline-grid; place-items: center; width: 24px; height: 24px; margin-right: 8px;
+    border-radius: 50%; background: var(--chip); color: var(--chip-ink); font-size: 0.8rem;
+  }
   .sub { color: var(--muted); margin: 0 0 24px; }
   .panel {
     background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
     padding: 20px; margin-bottom: 20px;
   }
+  .panel > p { margin: 0 0 8px; color: var(--muted); font-size: 0.92rem; }
   .notice { border-left: 4px solid var(--warn); font-size: 0.92rem; color: var(--muted); }
   .notice strong { color: var(--ink); }
   label { display: block; font-size: 0.85rem; font-weight: 600; margin: 12px 0 4px; }
+  label.inline { display: flex; align-items: center; gap: 8px; font-weight: 500; margin-top: 14px; }
   input, select {
     width: 100%; padding: 10px 12px; font: inherit; color: var(--ink); background: var(--bg);
     border: 1px solid var(--line); border-radius: 6px;
   }
+  input[type="checkbox"] { width: 18px; height: 18px; padding: 0; accent-color: var(--accent); }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+  @media (max-width: 600px) { .row, .row3 { grid-template-columns: 1fr; } }
   .hint { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; align-items: center; }
   button {
-    margin-top: 18px; padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer;
+    padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer;
     background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px;
   }
-  button[disabled] { opacity: 0.5; cursor: progress; }
+  button[disabled] { opacity: 0.5; cursor: not-allowed; }
   button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
-  ol.steps { list-style: none; padding: 0; margin: 0; }
+  button.chip { padding: 6px 12px; font-size: 0.85rem; background: var(--chip); color: var(--chip-ink); }
+  ol.steps { list-style: none; padding: 0; margin: 12px 0 0; }
+  ol.steps:empty { display: none; }
   ol.steps li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
   ol.steps li:last-child { border-bottom: 0; }
   .ico { font-weight: 700; text-align: center; }
@@ -60,34 +73,40 @@
   .bad .detail { color: var(--bad); }
   table { width: 100%; border-collapse: collapse; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
-  th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
-  td.num { text-align: right; }
-  .scroll { max-height: 420px; overflow: auto; margin-top: 12px; }
+  th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); position: sticky; top: 0; background: var(--panel); }
+  td.num, th.num { text-align: right; }
+  td.c, th.c { width: 34px; }
+  .scroll { max-height: 460px; overflow: auto; margin-top: 12px; border: 1px solid var(--line); border-radius: 6px; }
+  .tag { font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+  .tag.new { color: var(--ok); } .tag.have { color: var(--muted); } .tag.done { color: var(--ok); } .tag.err { color: var(--bad); }
   .hidden { display: none; }
-  code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; }
+  .count { color: var(--muted); font-size: 0.9rem; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Owlet Sleep Export</h1>
-  <p class="sub">Download your baby's sleep history from an Owlet sock account as a CSV.</p>
+  <h1>Owlet to Huckleberry</h1>
+  <p class="sub">Export your baby's sleep history from Owlet, then copy the sleeps you choose into Huckleberry.</p>
 
   <div class="panel notice">
-    <strong>Unofficial, use at your own risk.</strong> This tool is not affiliated with or endorsed by Owlet.
-    It uses undocumented APIs, which can break at any time, and automated access may go against Owlet's
-    terms of use, which could put your account at risk. Your login goes straight from this page to Google
-    (Owlet's login provider) and Owlet. Nothing is stored or sent anywhere else, except the optional relay below.
+    <strong>Unofficial, use at your own risk.</strong> Not affiliated with or endorsed by Owlet or Huckleberry.
+    It uses undocumented APIs, which can break at any time, and automated access goes against both companies'
+    terms of use, which could put your accounts at risk. Logins go straight from this page to the companies'
+    login servers. The only other server involved is the relay below, which sees a short-lived Owlet token,
+    never your password.
   </div>
 
-  <form id="form" class="panel">
+  <!-- 1. Owlet -->
+  <form id="owletForm" class="panel">
+    <h2><span class="n">1</span>Load your Owlet history</h2>
     <div class="row">
       <div>
-        <label for="email">Owlet email</label>
-        <input id="email" type="email" autocomplete="username" required>
+        <label for="oEmail">Owlet email</label>
+        <input id="oEmail" type="email" autocomplete="username" required>
       </div>
       <div>
-        <label for="password">Owlet password</label>
-        <input id="password" type="password" autocomplete="current-password" required>
+        <label for="oPassword">Owlet password</label>
+        <input id="oPassword" type="password" autocomplete="current-password" required>
       </div>
     </div>
     <div class="row">
@@ -99,38 +118,80 @@
         </select>
       </div>
       <div>
-        <label for="relay">Relay URL (optional)</label>
-        <input id="relay" type="url" placeholder="https://your-relay.workers.dev">
-        <div class="hint">One Owlet login step refuses requests from web pages. A relay forwards just that step.</div>
+        <label for="relay">Relay URL</label>
+        <input id="relay" type="url" placeholder="https://your-relay.workers.dev" required>
+        <div class="hint">One Owlet login step refuses requests from web pages. The relay forwards just that step.</div>
       </div>
     </div>
-    <button id="go" type="submit">Export sleep history</button>
+    <label class="inline"><input id="remember" type="checkbox">
+      Remember logins on this device (saved unencrypted in this browser only; untick to erase)</label>
+    <div class="actions"><button id="oGo" type="submit">Load Owlet history</button></div>
+    <ol id="oSteps" class="steps"></ol>
   </form>
 
-  <section id="progress" class="panel hidden">
-    <ol id="steps" class="steps"></ol>
-  </section>
-
-  <section id="results" class="panel hidden">
-    <div id="summary"></div>
-    <button id="csv" class="secondary" type="button">Download CSV</button>
+  <!-- 2. Pick dates -->
+  <section id="pick" class="panel hidden">
+    <h2><span class="n">2</span>Choose dates</h2>
+    <p id="loaded"></p>
+    <div class="row3">
+      <div><label for="from">From</label><input id="from" type="date"></div>
+      <div><label for="to">To</label><input id="to" type="date"></div>
+      <div class="actions" style="margin-top:0">
+        <button class="chip" type="button" data-days="7">7 days</button>
+        <button class="chip" type="button" data-days="30">30 days</button>
+        <button class="chip" type="button" data-days="all">All</button>
+      </div>
+    </div>
+    <div class="actions">
+      <span id="rangeCount" class="count"></span>
+      <button id="csv" class="secondary" type="button">Download CSV</button>
+    </div>
     <div class="scroll">
       <table>
-        <thead><tr><th>Start</th><th>End</th><th class="num">Hours</th></tr></thead>
+        <thead><tr><th class="c"><input id="all" type="checkbox" title="Select all"></th>
+          <th>Start</th><th>End</th><th class="num">Hours</th><th>Huckleberry</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
     </div>
   </section>
+
+  <!-- 3. Huckleberry -->
+  <form id="hbForm" class="panel hidden">
+    <h2><span class="n">3</span>Import into Huckleberry</h2>
+    <p>Connecting only reads. It checks which sleeps are already in Huckleberry so they aren't duplicated.
+      Nothing is written until you click Import.</p>
+    <div class="row">
+      <div>
+        <label for="hEmail">Huckleberry email</label>
+        <input id="hEmail" type="email" autocomplete="username" required>
+      </div>
+      <div>
+        <label for="hPassword">Huckleberry password</label>
+        <input id="hPassword" type="password" autocomplete="current-password" required>
+      </div>
+    </div>
+    <div class="actions"><button id="hGo" type="submit">Connect to Huckleberry</button></div>
+    <div id="childRow" class="hidden">
+      <label for="child">Child</label>
+      <select id="child"></select>
+    </div>
+    <div class="actions">
+      <button id="import" type="button" disabled>Import selected</button>
+      <span id="importCount" class="count"></span>
+    </div>
+    <ol id="hSteps" class="steps"></ol>
+  </form>
 </main>
 
 <script>
 "use strict";
 
-// Public constants from the Owlet Android app, as used by pyowletapi.
-const REGIONS = {
+// ---------------------------------------------------------------- constants
+// Public client constants from the Owlet and Huckleberry Android apps (as used by
+// pyowletapi and py-huckleberry-api).
+const OWLET = {
   world: {
     apiKey: "AIzaSyCsDZ8kWxQuLJAMVnmEhEkayH1TSxKXfGA",
-    mini: "https://ayla-sso.owletdata.com/mini/",
     signin: "https://user-field-1a2039d9.aylanetworks.com/api/v1/token_sign_in",
     base: "https://ads-field-1a2039d9.aylanetworks.com/apiv1",
     appId: "sso-prod-3g-id",
@@ -138,62 +199,89 @@ const REGIONS = {
   },
   europe: {
     apiKey: "AIzaSyDm6EhV70wudwN3iOSq3vTjtsdGjdFLuuM",
-    mini: "https://ayla-sso.eu.owletdata.com/mini/",
     signin: "https://user-field-eu-1a2039d9.aylanetworks.com/api/v1/token_sign_in",
     base: "https://ads-field-eu-1a2039d9.aylanetworks.com/apiv1",
     appId: "OwletCare-Android-EU-fw-id",
     appSecret: "OwletCare-Android-EU-JKupMPBoj_Npce_9a95Pc8Qo0Mw",
   },
 };
+const HB_KEY = "AIzaSyApGVHktXeekGyAt-G6dIeWHUkq2oXqcjg";
+const HB_DB = "https://firestore.googleapis.com/v1/projects/simpleintervals/databases/(default)/documents";
+const STORE = "o2h.settings.v1";
 
 const $ = (id) => document.getElementById(id);
+const DAY = 86400000;
+
+// sessions: [{start: Date, end: Date, hb: "unknown"|"new"|"have"|"done"|"err", sel: bool}]
 let sessions = [];
+let hb = null; // {token, uid, tokenAt, children: [{cid, nickname}]}
 
-// ---------------------------------------------------------------- step log
+// ---------------------------------------------------------------- remember logins (local only)
 
-function step(label) {
-  const li = document.createElement("li");
-  li.className = "run";
-  li.innerHTML = `<span class="ico">…</span><div><div class="label"></div><div class="detail"></div></div>`;
-  li.querySelector(".label").textContent = label;
-  $("steps").appendChild(li);
-  const set = (cls, ico, detail) => {
-    li.className = cls;
-    li.querySelector(".ico").textContent = ico;
-    li.querySelector(".detail").textContent = detail || "";
-  };
-  return {
-    ok: (d) => set("ok", "✓", d),
-    fail: (d) => set("bad", "✗", d),
-    note: (d) => { li.querySelector(".detail").textContent = d; },
-  };
+const FIELDS = ["oEmail", "oPassword", "region", "relay", "hEmail", "hPassword"];
+
+function loadSaved() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE) || "null");
+    if (!s) return;
+    FIELDS.forEach((f) => { if (s[f]) $(f).value = s[f]; });
+    $("remember").checked = true;
+  } catch { /* storage unavailable: just don't prefill */ }
 }
 
-// fetch() that tells a CORS/network block apart from an HTTP error.
+function save() {
+  try {
+    if ($("remember").checked) {
+      localStorage.setItem(STORE, JSON.stringify(Object.fromEntries(FIELDS.map((f) => [f, $(f).value]))));
+    } else {
+      localStorage.removeItem(STORE);
+    }
+  } catch { /* ignore */ }
+}
+
+$("remember").addEventListener("change", save);
+FIELDS.forEach((f) => $(f).addEventListener("change", () => { if ($("remember").checked) save(); }));
+
+// ---------------------------------------------------------------- step log + fetch
+
+function stepper(listId) {
+  return (label) => {
+    const li = document.createElement("li");
+    li.className = "run";
+    li.innerHTML = `<span class="ico">…</span><div><div class="label"></div><div class="detail"></div></div>`;
+    li.querySelector(".label").textContent = label;
+    $(listId).appendChild(li);
+    const set = (cls, ico, d) => { li.className = cls; li.querySelector(".ico").textContent = ico; li.querySelector(".detail").textContent = d || ""; };
+    return { ok: (d) => set("ok", "✓", d), fail: (d) => set("bad", "✗", d), note: (d) => { li.querySelector(".detail").textContent = d; } };
+  };
+}
+const oStep = stepper("oSteps");
+const hStep = stepper("hSteps");
+
+class Shown extends Error {}
+
 async function call(s, url, opts) {
   let r;
   try {
     r = await fetch(url, opts);
   } catch (e) {
-    const host = new URL(url).host;
-    s.fail(`Blocked before reaching ${host}. The browser refused the request (most likely the server ` +
-           `doesn't allow requests from web pages, i.e. CORS). ${e.message}`);
-    throw new Error("blocked");
+    s.fail(`Couldn't reach ${new URL(url).host}. The browser blocked the request (CORS) or the network failed. ${e.message}`);
+    throw new Shown();
   }
   if (!r.ok) {
-    const body = await r.text().catch(() => "");
-    s.fail(`HTTP ${r.status} from ${new URL(url).host}: ${body.slice(0, 200)}`);
-    throw new Error("http " + r.status);
+    let body = await r.text().catch(() => "");
+    try { body = JSON.parse(body).error?.message || body; } catch { /* keep text */ }
+    s.fail(`HTTP ${r.status} from ${new URL(url).host}: ${String(body).slice(0, 200)}`);
+    throw new Shown();
   }
   return r.json();
 }
 
-// ---------------------------------------------------------------- Owlet login + history
+// ---------------------------------------------------------------- Owlet
 
-async function owletLogin(region, email, password, relay) {
-  const R = REGIONS[region];
-
-  let s = step("1. Sign in with Google (Owlet's login provider)");
+async function owletLogin() {
+  const region = $("region").value, R = OWLET[region];
+  let s = oStep("Sign in with Google (Owlet's login provider)");
   const g = await call(s, `https://www.googleapis.com/identitytoolkit/v3/relyingparty/verifyPassword?key=${R.apiKey}`, {
     method: "POST",
     headers: {
@@ -201,22 +289,22 @@ async function owletLogin(region, email, password, relay) {
       "X-Android-Package": "com.owletcare.owletcare",
       "X-Android-Cert": "2A3BC26DB0B8B0792DBE28E6FFDC2598F9B12B74",
     },
-    body: JSON.stringify({ email, password, returnSecureToken: true }),
+    body: JSON.stringify({ email: $("oEmail").value.trim(), password: $("oPassword").value, returnSecureToken: true }),
   });
-  s.ok("Got Google ID token");
+  s.ok();
 
-  s = step("2. Get Owlet token" + (relay ? " (via relay)" : ""));
-  const miniUrl = relay ? `${relay.replace(/\/$/, "")}/mini?region=${region}` : R.mini;
-  const m = await call(s, miniUrl, { headers: { Authorization: g.idToken } });
-  s.ok("Got Owlet token");
+  s = oStep("Get Owlet token (via relay)");
+  const relay = $("relay").value.trim().replace(/\/$/, "");
+  const m = await call(s, `${relay}/mini?region=${region}`, { headers: { Authorization: g.idToken } });
+  s.ok();
 
-  s = step("3. Sign in to Owlet's device cloud (Ayla Networks)");
+  s = oStep("Sign in to Owlet's device cloud");
   const a = await call(s, R.signin, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ app_id: R.appId, app_secret: R.appSecret, provider: "owl_id", token: m.mini_token }),
   });
-  s.ok("Signed in");
+  s.ok();
   return { base: R.base, headers: { Authorization: "auth_token " + a.access_token } };
 }
 
@@ -240,13 +328,11 @@ async function fetchHistory(api, dsn, s) {
   return [...seen.values()];
 }
 
-// ---------------------------------------------------------------- MONITORING_SUMMARY decoding
-// base64 -> 1 version byte, then frames of [u16 BE length][u8 checksum][protobuf].
-// Each protobuf = one 10-minute window. Field 25 = {1: {1: sleep start, 2: sleep end}}.
+// MONITORING_SUMMARY: base64 -> 1 version byte, then frames of [u16 BE length][u8 checksum][protobuf].
+// Each protobuf covers 10 minutes; field 25 = {1: {1: sleep start, 2: sleep end}} (Owlet's own session).
 
 function b64bytes(s) {
-  s = s + "=".repeat((4 - (s.length % 4)) % 4);
-  const bin = atob(s);
+  const bin = atob(s + "=".repeat((4 - (s.length % 4)) % 4));
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
@@ -263,11 +349,11 @@ function parsePb(b) {
   while (i < b.length) {
     const key = varint(), f = Math.floor(key / 8), wt = key % 8;
     if (f === 0) throw new Error("field 0");
-    let v;
+    let v = null;
     if (wt === 0) v = varint();
     else if (wt === 2) { const n = varint(); if (i + n > b.length) throw new Error("short"); v = b.subarray(i, i + n); i += n; }
-    else if (wt === 5) { i += 4; v = null; }
-    else if (wt === 1) { i += 8; v = null; }
+    else if (wt === 5) i += 4;
+    else if (wt === 1) i += 8;
     else throw new Error("wire type " + wt);
     out.push([f, v]);
   }
@@ -276,8 +362,7 @@ function parsePb(b) {
 
 function frames(raw) {
   const out = [];
-  let i = 1;
-  while (i + 3 <= raw.length) {
+  for (let i = 1; i + 3 <= raw.length;) {
     const n = (raw[i] << 8) | raw[i + 1];
     out.push(raw.subarray(i + 3, i + 3 + n));
     i += 3 + n;
@@ -312,73 +397,292 @@ function sessionsFrom(points) {
   }
   return [...ends.entries()]
     .filter(([, e]) => e.size)
-    .map(([st, e]) => [new Date(st * 1000), new Date(Math.max(...e) * 1000)])
-    .sort((a, b) => a[0] - b[0]);
+    .map(([st, e]) => ({ start: new Date(st * 1000), end: new Date(Math.max(...e) * 1000), hb: "unknown", sel: false }))
+    .sort((a, b) => a.start - b.start);
 }
 
-// ---------------------------------------------------------------- UI
+$("owletForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  save();
+  $("oGo").disabled = true;
+  $("oSteps").textContent = "";
+  try {
+    const api = await owletLogin();
+    let s = oStep("Find sock");
+    const devices = await call(s, `${api.base}/devices.json`, { headers: api.headers });
+    if (!devices.length) { s.fail("No Owlet devices on this account"); return; }
+    s.ok(devices.map((d) => d.device.product_name).join(", "));
 
-const fmt = (d) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ` +
-  `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-const hours = (a, b) => ((b - a) / 3600000).toFixed(2);
+    const found = [];
+    for (const d of devices) {
+      s = oStep(`Download sleep history${devices.length > 1 ? " for " + d.device.product_name : ""}`);
+      const pts = await fetchHistory(api, d.device.dsn, s);
+      const got = sessionsFrom(pts);
+      s.ok(`${pts.length} summaries, ${got.length} sleep sessions`);
+      found.push(...got);
+    }
+    if (!found.length) { oStep("No sleep sessions found").fail("The account's history had no completed sleeps."); return; }
+    sessions = found.sort((a, b) => a.start - b.start);
+    $("loaded").textContent =
+      `Found ${sessions.length} sleeps from ${sessions[0].start.toLocaleDateString()} to ` +
+      `${sessions[sessions.length - 1].end.toLocaleDateString()}. Times are in your local time zone.`;
+    setRange(7);
+    $("pick").classList.remove("hidden");
+    $("hbForm").classList.remove("hidden");
+    if (hb) await refreshHb();
+  } catch (e) {
+    if (!(e instanceof Shown)) oStep("Unexpected error").fail(e.message);
+  } finally {
+    $("oGo").disabled = false;
+  }
+});
+
+// ---------------------------------------------------------------- date range + table
+
+const pad = (n) => String(n).padStart(2, "0");
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const fmt = (d) => `${ymd(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const hours = (s) => ((s.end - s.start) / 3600000).toFixed(2);
+
+function setRange(days) {
+  const last = sessions[sessions.length - 1].start;
+  $("to").value = ymd(last);
+  $("from").value = days === "all" ? ymd(sessions[0].start) : ymd(new Date(last - (days - 1) * DAY));
+  render();
+}
+
+function inRange() {
+  const from = $("from").value ? new Date($("from").value + "T00:00") : new Date(0);
+  const to = $("to").value ? new Date(new Date($("to").value + "T00:00").getTime() + DAY) : new Date(8.64e15);
+  return sessions.filter((s) => s.start >= from && s.start < to);
+}
+
+const TAGS = {
+  unknown: ["", ""], new: ["new", "New"], have: ["have", "Already there"],
+  done: ["done", "Imported ✓"], err: ["err", "Failed"],
+};
 
 function render() {
+  const list = inRange();
   const tbody = $("rows");
   tbody.textContent = "";
-  for (const [a, b] of [...sessions].reverse()) {
+  for (const s of [...list].reverse()) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td></td><td></td><td class="num"></td>`;
-    tr.children[0].textContent = fmt(a);
-    tr.children[1].textContent = fmt(b);
-    tr.children[2].textContent = hours(a, b);
+    tr.innerHTML = `<td class="c"><input type="checkbox"></td><td></td><td></td><td class="num"></td><td><span class="tag"></span></td>`;
+    const cb = tr.querySelector("input");
+    cb.checked = s.sel;
+    cb.disabled = !hb || s.hb === "done";
+    cb.addEventListener("change", () => { s.sel = cb.checked; updateCounts(); });
+    tr.children[1].textContent = fmt(s.start);
+    tr.children[2].textContent = fmt(s.end);
+    tr.children[3].textContent = hours(s);
+    const [cls, text] = TAGS[s.hb];
+    const tag = tr.querySelector(".tag");
+    tag.className = "tag " + cls;
+    tag.textContent = text;
     tbody.appendChild(tr);
   }
-  const first = sessions[0][0], last = sessions[sessions.length - 1][1];
-  $("summary").textContent =
-    `${sessions.length} sleep sessions from ${first.toLocaleDateString()} to ${last.toLocaleDateString()} (times in your local time zone).`;
-  $("results").classList.remove("hidden");
+  $("all").disabled = !hb;
+  updateCounts();
 }
 
+function updateCounts() {
+  const list = inRange();
+  $("rangeCount").textContent = `${list.length} sleeps in range`;
+  const n = list.filter((s) => s.sel && s.hb !== "done").length;
+  $("importCount").textContent = hb ? `${n} selected` : "";
+  $("import").disabled = !hb || n === 0;
+  $("import").textContent = n ? `Import ${n} selected sleep${n === 1 ? "" : "s"}` : "Import selected";
+  const selectable = list.filter((s) => s.hb !== "done");
+  $("all").checked = selectable.length > 0 && selectable.every((s) => s.sel);
+}
+
+$("from").addEventListener("change", render);
+$("to").addEventListener("change", render);
+document.querySelectorAll("[data-days]").forEach((b) =>
+  b.addEventListener("click", () => setRange(b.dataset.days === "all" ? "all" : +b.dataset.days)));
+$("all").addEventListener("change", () => {
+  inRange().forEach((s) => { if (s.hb !== "done") s.sel = $("all").checked; });
+  render();
+});
+
 $("csv").addEventListener("click", () => {
-  const lines = ["start,end,hours", ...sessions.map(([a, b]) => `${fmt(a)},${fmt(b)},${hours(a, b)}`)];
+  const list = inRange();
+  const lines = ["start,end,hours", ...list.map((s) => `${fmt(s.start)},${fmt(s.end)},${hours(s)}`)];
   const url = URL.createObjectURL(new Blob([lines.join("\n") + "\n"], { type: "text/csv" }));
-  const link = Object.assign(document.createElement("a"), { href: url, download: "owlet_sleep_export.csv" });
-  link.click();
+  const a = Object.assign(document.createElement("a"), { href: url, download: `owlet_sleep_${$("from").value}_to_${$("to").value}.csv` });
+  a.click();
   URL.revokeObjectURL(url);
 });
 
-$("form").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  $("go").disabled = true;
-  $("steps").textContent = "";
-  $("progress").classList.remove("hidden");
-  $("results").classList.add("hidden");
-  try {
-    const api = await owletLogin($("region").value, $("email").value.trim(), $("password").value, $("relay").value.trim());
+// ---------------------------------------------------------------- Huckleberry (Firestore REST)
 
-    let s = step("4. Find sock");
-    const devices = await call(s, `${api.base}/devices.json`, { headers: api.headers });
-    if (!devices.length) { s.fail("No Owlet devices on this account"); return; }
-    s.ok(devices.map((d) => `${d.device.product_name} (${d.device.dsn})`).join(", "));
+const num = (v) => (v ? Number(v.integerValue ?? v.doubleValue ?? 0) : 0);
 
-    sessions = [];
-    for (const d of devices) {
-      s = step(`5. Download sleep history for ${d.device.dsn}`);
-      const pts = await fetchHistory(api, d.device.dsn, s);
-      const found = sessionsFrom(pts);
-      s.ok(`${pts.length} summaries, ${found.length} sleep sessions`);
-      sessions.push(...found);
+async function hbLogin(s) {
+  const a = await call(s, `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${HB_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: $("hEmail").value.trim(), password: $("hPassword").value, returnSecureToken: true }),
+  });
+  return { token: a.idToken, uid: a.localId, tokenAt: Date.now() };
+}
+
+async function hbAuth() {
+  if (hb && Date.now() - hb.tokenAt > 45 * 60000) Object.assign(hb, await hbLogin(hStep("Refresh Huckleberry login")));
+  return { "Content-Type": "application/json", Authorization: "Bearer " + hb.token };
+}
+
+async function hbExisting(cid, from, to, s) {
+  const headers = await hbAuth();
+  const q = (where) => call(s, `${HB_DB}/sleep/${cid}:runQuery`, {
+    method: "POST", headers, body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "intervals" }], where } }),
+  });
+  const range = await q({ compositeFilter: { op: "AND", filters: [
+    { fieldFilter: { field: { fieldPath: "start" }, op: "GREATER_THAN_OR_EQUAL", value: { doubleValue: from } } },
+    { fieldFilter: { field: { fieldPath: "start" }, op: "LESS_THAN", value: { doubleValue: to } } },
+  ] } });
+  const multi = await q({ fieldFilter: { field: { fieldPath: "multi" }, op: "EQUAL", value: { booleanValue: true } } });
+  const out = [];
+  for (const r of range) {
+    const f = r.document?.fields;
+    if (f && !f.multi) out.push([num(f.start), num(f.start) + num(f.duration)]);
+  }
+  for (const r of multi) {
+    const data = r.document?.fields?.data?.mapValue?.fields || {};
+    for (const e of Object.values(data)) {
+      const f = e.mapValue?.fields;
+      if (f && num(f.start) >= from && num(f.start) < to) out.push([num(f.start), num(f.start) + num(f.duration)]);
     }
-    sessions.sort((a, b) => a[0] - b[0]);
-    if (sessions.length) render();
-    else step("No sleep sessions found").fail("The account's history had no completed sleep sessions.");
+  }
+  return out;
+}
+
+async function refreshHb() {
+  const s = hStep("Check which sleeps are already in Huckleberry");
+  const cid = $("child").value;
+  const from = sessions[0].start / 1000 - DAY / 1000, to = Date.now() / 1000 + DAY / 1000;
+  const have = await hbExisting(cid, from, to, s);
+  for (const x of sessions) {
+    if (x.hb === "done") continue;
+    const a = x.start / 1000, b = x.end / 1000;
+    x.hb = have.some(([hs, he]) => hs < b && he > a) ? "have" : "new";
+    x.sel = x.hb === "new";
+  }
+  s.ok(`${have.length} sleeps already logged; ${sessions.filter((x) => x.hb === "new").length} Owlet sleeps are new`);
+  render();
+}
+
+$("hbForm").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  save();
+  $("hGo").disabled = true;
+  $("hSteps").textContent = "";
+  try {
+    const s = hStep("Sign in to Huckleberry");
+    hb = await hbLogin(s);
+    const u = await call(s, `${HB_DB}/users/${hb.uid}`, { headers: await hbAuth() });
+    hb.children = (u.fields?.childList?.arrayValue?.values || []).map((v) => ({
+      cid: v.mapValue.fields.cid.stringValue,
+      nickname: v.mapValue.fields.nickname?.stringValue || "Child",
+    }));
+    if (!hb.children.length) { s.fail("No children on this Huckleberry account"); hb = null; return; }
+    s.ok(`Children: ${hb.children.map((c) => c.nickname).join(", ")}`);
+    $("child").textContent = "";
+    for (const c of hb.children) $("child").appendChild(Object.assign(document.createElement("option"), { value: c.cid, textContent: c.nickname }));
+    $("childRow").classList.toggle("hidden", hb.children.length < 2);
+    await refreshHb();
   } catch (e) {
-    if (e.message !== "blocked" && !e.message.startsWith("http")) step("Unexpected error").fail(e.message);
+    hb = null;
+    if (!(e instanceof Shown)) hStep("Unexpected error").fail(e.message);
   } finally {
-    $("go").disabled = false;
+    $("hGo").disabled = false;
   }
 });
+
+$("child").addEventListener("change", () => {
+  sessions.forEach((s) => { if (s.hb !== "done") s.hb = "unknown"; });
+  refreshHb().catch((e) => { if (!(e instanceof Shown)) hStep("Unexpected error").fail(e.message); });
+});
+
+function hex(n) {
+  const b = crypto.getRandomValues(new Uint8Array(n));
+  return [...b].map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, n * 2);
+}
+
+// Matches what the Huckleberry app writes for a manual sleep entry.
+async function logSleep(cid, s) {
+  const id = `${Date.now()}-${hex(10)}`;
+  const start = s.start / 1000, end = s.end / 1000;
+  const fields = {
+    _id: { stringValue: id },
+    start: { doubleValue: start },
+    duration: { doubleValue: end - start },
+    offset: { doubleValue: s.start.getTimezoneOffset() },
+    end_offset: { doubleValue: s.end.getTimezoneOffset() },
+    details: { mapValue: {} },
+    lastUpdated: { doubleValue: Date.now() / 1000 },
+    tz: { stringValue: Intl.DateTimeFormat().resolvedOptions().timeZone },
+  };
+  const r = await fetch(`${HB_DB}/sleep/${cid}/intervals/${id}?currentDocument.exists=false`, {
+    method: "PATCH", headers: await hbAuth(), body: JSON.stringify({ fields }),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${(await r.text()).slice(0, 160)}`);
+}
+
+// Keep the app's "last sleep" summary current if we imported something newer.
+async function updateLastSleep(cid, latest, s) {
+  const headers = await hbAuth();
+  const doc = await call(s, `${HB_DB}/sleep/${cid}`, { headers });
+  const current = num(doc.fields?.prefs?.mapValue?.fields?.lastSleep?.mapValue?.fields?.start);
+  const start = latest.start / 1000;
+  if (current && start < current) return false;
+  const now = Date.now() / 1000;
+  const mask = ["prefs.lastSleep", "prefs.timestamp", "prefs.local_timestamp"].map((p) => `updateMask.fieldPaths=${p}`).join("&");
+  await call(s, `${HB_DB}/sleep/${cid}?${mask}`, {
+    method: "PATCH", headers,
+    body: JSON.stringify({ fields: { prefs: { mapValue: { fields: {
+      lastSleep: { mapValue: { fields: {
+        start: { doubleValue: start },
+        duration: { doubleValue: latest.end / 1000 - start },
+        offset: { doubleValue: latest.start.getTimezoneOffset() },
+      } } },
+      timestamp: { mapValue: { fields: { seconds: { doubleValue: now } } } },
+      local_timestamp: { doubleValue: now },
+    } } } } }),
+  });
+  return true;
+}
+
+$("import").addEventListener("click", async () => {
+  const todo = inRange().filter((s) => s.sel && s.hb !== "done");
+  if (!todo.length) return;
+  const child = hb.children.find((c) => c.cid === $("child").value)?.nickname || "your child";
+  const overlaps = todo.filter((s) => s.hb === "have").length;
+  if (!confirm(`Add ${todo.length} sleep${todo.length === 1 ? "" : "s"} to ${child}'s Huckleberry log?` +
+               (overlaps ? `\n\n${overlaps} of them overlap sleeps already there and will create duplicates.` : ""))) return;
+  $("import").disabled = true;
+  const s = hStep(`Import ${todo.length} sleeps`);
+  const cid = $("child").value;
+  let ok = 0;
+  try {
+    for (const x of todo) {
+      try { await logSleep(cid, x); x.hb = "done"; x.sel = false; ok++; }
+      catch (e) { x.hb = "err"; s.note(`Failed on ${fmt(x.start)}: ${e.message}`); }
+      render();
+    }
+    const done = todo.filter((x) => x.hb === "done");
+    if (done.length) await updateLastSleep(cid, done.reduce((a, b) => (b.start > a.start ? b : a)), s);
+    if (ok === todo.length) s.ok(`Imported ${ok} sleeps`);
+    else s.fail(`Imported ${ok} of ${todo.length}; failed ones are marked in the table`);
+  } catch (e) {
+    if (!(e instanceof Shown)) s.fail(e.message);
+  } finally {
+    render();
+  }
+});
+
+loadSaved();
 </script>
 </body>
 </html>

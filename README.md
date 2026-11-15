@@ -21,9 +21,21 @@ writes use [py-huckleberry-api](https://github.com/Woyken/py-huckleberry-api).
 
 ## Web page (`index.html`)
 
-Export only, for now. Everything runs in your browser. One Owlet login step
-(`ayla-sso.owletdata.com/mini/`) rejects requests from web pages, so the page needs a small relay
-for that one call.
+Everything runs in your browser:
+
+1. Sign in to Owlet and load the full sleep history.
+2. Pick a date range. You can download it as CSV.
+3. Sign in to Huckleberry. The page marks which sleeps are already logged (by overlapping time)
+   and ticks only the new ones. Change the selection if you like, then click **Import selected**.
+
+"Remember logins on this device" saves both logins and the relay URL in this browser's
+localStorage, unencrypted. They never go anywhere else. Untick it to erase them.
+
+One Owlet login step (`ayla-sso.owletdata.com/mini/`) rejects requests from web pages, so the
+page needs a small relay for that one call. `relay/worker.js` is a Cloudflare Worker that forwards
+only that request, and only for the page origins listed in it. To deploy your own: Cloudflare
+dashboard → Workers & Pages → Create → Hello World → Edit code, paste `relay/worker.js`, add your
+page's origin to `ALLOWED_ORIGINS`, then Deploy and paste the `*.workers.dev` URL into the page.
 
 ## Command line (Windows, Python 3.14+)
 

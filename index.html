@@ -80,6 +80,9 @@
   .tag { font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
   .tag.new { color: var(--ok); } .tag.have { color: var(--muted); } .tag.done { color: var(--ok); } .tag.err { color: var(--bad); }
   .hidden { display: none; }
+  .or { display: flex; align-items: center; gap: 12px; margin: 20px 0 4px; color: var(--muted); font-size: 0.85rem; }
+  .or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+  input[type="file"] { padding: 8px; }
   .count { color: var(--muted); font-size: 0.9rem; }
 </style>
 </head>
@@ -98,7 +101,7 @@
 
   <!-- 1. Owlet -->
   <form id="owletForm" class="panel">
-    <h2><span class="n">1</span>Load your Owlet history</h2>
+    <h2><span class="n">1</span>Get the sleeps</h2>
     <div class="row">
       <div>
         <label for="oEmail">Owlet email</label>
@@ -136,12 +139,17 @@
     </div>
     <div class="hint">Only this range is downloaded from Owlet. Longer ranges take longer.</div>
     <div class="actions"><button id="oGo" type="submit">Load Owlet sleeps</button></div>
+    <div class="or">or</div>
+    <label for="csvFile">Use a CSV file instead</label>
+    <input id="csvFile" type="file" accept=".csv,text/csv">
+    <div class="hint">A file you downloaded from this page or the command-line tool earlier (columns: start, end).
+      You don't need to sign in to Owlet for this.</div>
     <ol id="oSteps" class="steps"></ol>
   </form>
 
   <!-- 2. Pick dates -->
   <section id="pick" class="panel hidden">
-    <h2><span class="n">2</span>Owlet sleeps</h2>
+    <h2><span class="n">2</span>Review the sleeps</h2>
     <p id="loaded"></p>
     <div class="actions" style="margin-top:0">
       <span id="rangeCount" class="count"></span>
@@ -157,10 +165,10 @@
   </section>
 
   <!-- 3. Huckleberry -->
-  <form id="hbForm" class="panel hidden">
+  <form id="hbForm" class="panel">
     <h2><span class="n">3</span>Import into Huckleberry</h2>
-    <p>Connecting only reads. It checks which sleeps are already in Huckleberry so they aren't duplicated.
-      Nothing is written until you click Import.</p>
+    <p>You can connect before or after getting the sleeps. Connecting only reads: it checks which sleeps
+      are already in Huckleberry so they aren't duplicated. Nothing is written until you click Import.</p>
     <div class="row">
       <div>
         <label for="hEmail">Huckleberry email</label>
@@ -425,19 +433,62 @@ $("owletForm").addEventListener("submit", async (ev) => {
       s.ok(`${got.length} sleep${got.length === 1 ? "" : "s"} in range`);
       found.push(...got);
     }
-    sessions = found.sort((a, b) => a.start - b.start);
-    loaded = { from: $("from").value, to: $("to").value };
-    render();
-    $("pick").classList.remove("hidden");
-    if (!sessions.length) return;
-    $("hbForm").classList.remove("hidden");
-    if (hb) await refreshHb();
+    await useSessions(found, { from: $("from").value, to: $("to").value, source: "owlet" });
   } catch (e) {
     if (!(e instanceof Shown)) oStep("Unexpected error").fail(e.message);
   } finally {
     $("oGo").disabled = false;
   }
 });
+
+// ---------------------------------------------------------------- CSV file as the source
+
+// Accepts "2026-11-14 19:30" (local time, what this page and backfill.py write) or full ISO times.
+function parseTime(x) {
+  if (!/^\d{4}-\d\d-\d\d[ T]\d\d:\d\d/.test(x || "")) return null;
+  const d = new Date(x.replace(" ", "T"));
+  return isNaN(d) ? null : d;
+}
+
+$("csvFile").addEventListener("change", async () => {
+  const file = $("csvFile").files[0];
+  if (!file) return;
+  $("oSteps").textContent = "";
+  const s = oStep(`Read ${file.name}`);
+  try {
+    const found = [];
+    let skipped = 0;
+    for (const line of (await file.text()).split(/\r?\n/)) {
+      const [a, b] = line.split(",").map((x) => x.trim().replace(/^"|"$/g, ""));
+      if (!a || /^start$/i.test(a)) continue;
+      const start = parseTime(a), end = parseTime(b);
+      if (!start || !end || end <= start) { skipped++; continue; }
+      found.push({ start, end, hb: "unknown", sel: false });
+    }
+    if (!found.length) {
+      s.fail("No sleeps found. Expected a start,end header and rows like 2026-11-14 19:30,2026-11-15 06:10");
+      return;
+    }
+    found.sort((x, y) => x.start - y.start);
+    $("from").value = ymd(found[0].start);
+    $("to").value = ymd(found[found.length - 1].start);
+    s.ok(`${found.length} sleeps${skipped ? `, ${skipped} unreadable line${skipped === 1 ? "" : "s"} skipped` : ""}`);
+    await useSessions(found, { from: $("from").value, to: $("to").value, source: file.name });
+  } catch (e) {
+    if (!(e instanceof Shown)) s.fail(e.message);
+  } finally {
+    $("csvFile").value = "";
+  }
+});
+
+// Shared by both sources: show the table and, if already connected, check Huckleberry.
+async function useSessions(list, info) {
+  sessions = list.sort((a, b) => a.start - b.start);
+  loaded = info;
+  render();
+  $("pick").classList.remove("hidden");
+  if (hb) await refreshHb();
+}
 
 // ---------------------------------------------------------------- date range + table
 
@@ -446,7 +497,7 @@ const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate(
 const fmt = (d) => `${ymd(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const hours = (s) => ((s.end - s.start) / 3600000).toFixed(2);
 
-let loaded = null; // {from, to} date strings of the last Owlet download
+let loaded = null; // {from, to, source} of the sleeps currently loaded
 
 function setRange(days) {
   const today = new Date();
@@ -476,8 +527,9 @@ function render() {
   if (loaded) {
     const outside = $("from").value < loaded.from || $("to").value > loaded.to;
     $("loaded").textContent =
-      `Loaded ${loaded.from} to ${loaded.to}. Times are in your local time zone.` +
-      (outside ? " The dates above go beyond that, so click Load Owlet sleeps again to fetch them." : "");
+      (loaded.source === "owlet" ? `Loaded from Owlet, ${loaded.from} to ${loaded.to}.` : `Loaded from ${loaded.source}.`) +
+      " Times are in your local time zone." +
+      (outside && loaded.source === "owlet" ? " The dates above go beyond that, so click Load Owlet sleeps again to fetch them." : "");
   }
   const list = inRange();
   const tbody = $("rows");
@@ -577,7 +629,7 @@ async function hbExisting(cid, from, to, s) {
 async function refreshHb() {
   const s = hStep("Check which sleeps are already in Huckleberry");
   const cid = $("child").value;
-  if (!sessions.length) { s.ok("No Owlet sleeps loaded to compare"); render(); return; }
+  if (!sessions.length) { s.ok("Connected. Get the sleeps in step 1 and they'll be checked here."); render(); return; }
   const from = sessions[0].start / 1000 - DAY / 1000, to = sessions[sessions.length - 1].end / 1000 + DAY / 1000;
   const have = await hbExisting(cid, from, to, s);
   for (const x of sessions) {

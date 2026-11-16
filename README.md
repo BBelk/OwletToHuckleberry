@@ -24,9 +24,10 @@ writes use [py-huckleberry-api](https://github.com/Woyken/py-huckleberry-api).
 Everything runs in your browser:
 
 1. Sign in to Owlet, pick a date range (last night, 7 or 30 days, or any dates) and load just
-   those sleeps.
+   those sleeps. Or skip Owlet and choose a CSV you downloaded earlier (columns `start,end`,
+   local time like `2026-11-14 19:30`).
 2. Review them in a table. You can download them as CSV.
-3. Sign in to Huckleberry. The page marks which sleeps are already logged (by overlapping time)
+3. Sign in to Huckleberry (before or after step 1). The page marks which sleeps are already logged (by overlapping time)
    and ticks only the new ones. Change the selection if you like, then click **Import selected**.
 
 "Remember logins on this device" saves both logins and the relay URL in this browser's

@@ -33,11 +33,32 @@ Everything runs in your browser:
 "Remember logins on this device" saves both logins and the relay URL in this browser's
 localStorage, unencrypted. They never go anywhere else. Untick it to erase them.
 
-One Owlet login step (`ayla-sso.owletdata.com/mini/`) rejects requests from web pages, so the
-page needs a small relay for that one call. `relay/worker.js` is a Cloudflare Worker that forwards
-only that request, and only for the page origins listed in it. To deploy your own: Cloudflare
-dashboard → Workers & Pages → Create → Hello World → Edit code, paste `relay/worker.js`, add your
-page's origin to `ALLOWED_ORIGINS`, then Deploy and paste the `*.workers.dev` URL into the page.
+### The relay
+
+Owlet's login has three steps. The middle one (`ayla-sso.owletdata.com/mini/`, which swaps your
+Google sign-in for an Owlet token) refuses requests from web pages, so the page sends just that
+one request through a small relay: `relay/worker.js`, a Cloudflare Worker of about 60 lines.
+
+- It only talks to Owlet's login server (it isn't an open proxy) and only answers this page.
+- It stores and logs nothing.
+- It handles a sign-in token that's good for about an hour. It never sees your password, your
+  Huckleberry login, or any sleep data.
+
+There's no shared relay. Whoever runs a relay could change its code to keep that token and get
+into your Owlet account for about an hour, so each person runs their own. It's free and takes
+about five minutes:
+
+1. Create a free account at [dash.cloudflare.com](https://dash.cloudflare.com/sign-up) (no card).
+2. Open **Workers & Pages** (under *Compute*) and click **Create**.
+3. Choose **Start with Hello World!**, name it (for example `owlet-relay`), and click **Deploy**.
+4. Click **Edit code**, replace everything with the contents of [`relay/worker.js`](relay/worker.js),
+   and click **Deploy**.
+5. Paste your worker's address (`https://owlet-relay.<you>.workers.dev`) into **Relay URL** on the
+   page, and tick *Remember*.
+
+To check it's running, open the address in a browser tab. "Origin not allowed" means it's working.
+If you host your own copy of the page somewhere else, add that page's origin to `ALLOWED_ORIGINS`
+in the worker.
 
 ## Command line (Windows, Python 3.14+)
 

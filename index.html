@@ -80,6 +80,14 @@
   .tag { font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
   .tag.new { color: var(--ok); } .tag.have { color: var(--muted); } .tag.done { color: var(--ok); } .tag.err { color: var(--bad); }
   .hidden { display: none; }
+  details.help { margin-top: 14px; border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; font-size: 0.92rem; }
+  details.help summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+  details.help p { margin: 10px 0; color: var(--muted); }
+  details.help strong { color: var(--ink); }
+  ol.howto { margin: 10px 0; padding-left: 22px; }
+  ol.howto li { margin: 6px 0; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; overflow-wrap: anywhere; }
+  a { color: var(--accent); }
   .or { display: flex; align-items: center; gap: 12px; margin: 20px 0 4px; color: var(--muted); font-size: 0.85rem; }
   .or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
   input[type="file"] { padding: 8px; }
@@ -95,8 +103,8 @@
     <strong>Unofficial, use at your own risk.</strong> Not affiliated with or endorsed by Owlet or Huckleberry.
     It uses undocumented APIs, which can break at any time, and automated access goes against both companies'
     terms of use, which could put your accounts at risk. Logins go straight from this page to the companies'
-    login servers. The only other server involved is the relay below, which sees a short-lived Owlet token,
-    never your password.
+    login servers. The only other server involved is the relay (see step 1), which passes along one
+    short-lived Owlet login token and never sees your password or your baby's data.
   </div>
 
   <!-- 1. Owlet -->
@@ -123,9 +131,37 @@
       <div>
         <label for="relay">Relay URL</label>
         <input id="relay" type="url" placeholder="https://your-relay.workers.dev" required>
-        <div class="hint">One Owlet login step refuses requests from web pages. The relay forwards just that step.</div>
+        <div class="hint" id="relayHint">Your own free Cloudflare relay. One Owlet login step refuses requests from web pages, and the relay forwards just that step. Setup steps are below.</div>
       </div>
     </div>
+    <details class="help" id="relayHelp">
+      <summary>Set up your relay (one time, about 5 minutes, free)</summary>
+      <p><strong>Why it's needed.</strong> Owlet's login has three steps. Two of them work from a web page, but the middle
+        one (swapping your Google sign-in for an Owlet token) is set up to refuse requests from web pages. So this page
+        sends just that one request through a tiny relay, which forwards it to Owlet and hands back the answer.</p>
+      <p><strong>What the relay can see.</strong> For that one step it handles a sign-in token that's good for about an
+        hour. It never sees your password, your Huckleberry login, or any sleep data. The relay code stores and logs
+        nothing, and it can only talk to Owlet's login server, nowhere else.
+        (<a href="https://github.com/BBelk/OwletToHuckleberry/blob/main/relay/worker.js" target="_blank" rel="noopener">Read the code</a>; it's about 60 lines.)</p>
+      <p><strong>Why it's yours and not shared.</strong> Whoever runs a relay could change its code to keep that token
+        and get into your Owlet account for about an hour. So this page doesn't offer a shared one: you run your own,
+        and nobody else is involved. It's free, and Cloudflare doesn't ask for a card.</p>
+      <ol class="howto">
+        <li>Create a free account at <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener">dash.cloudflare.com</a>
+          and verify your email.</li>
+        <li>In the left menu open <strong>Workers &amp; Pages</strong> (under <em>Compute</em>), then click
+          <strong>Create</strong>.</li>
+        <li>Choose <strong>Start with Hello World!</strong>, name it something like <code>owlet-relay</code>, and click
+          <strong>Deploy</strong>.</li>
+        <li>Click <strong>Edit code</strong>. Delete everything in the editor and paste in the relay code:
+          <button class="chip" type="button" id="copyRelay">Copy relay code</button></li>
+        <li>Click <strong>Deploy</strong> (top right).</li>
+        <li>Copy your worker's address. It looks like <code>https://owlet-relay.yourname.workers.dev</code>. Paste it
+          into <strong>Relay URL</strong> above, and tick <em>Remember</em> so you only do this once.</li>
+      </ol>
+      <p class="hint">To check it's running, open that address in a new tab. It should say "Origin not allowed". That's
+        correct: it only answers this page. To shut it off later, delete the worker in Cloudflare.</p>
+    </details>
     <label class="inline"><input id="remember" type="checkbox">
       Remember logins on this device (saved unencrypted in this browser only; untick to erase)</label>
     <div class="row3">
@@ -751,8 +787,22 @@ $("import").addEventListener("click", async () => {
   }
 });
 
+$("copyRelay").addEventListener("click", async () => {
+  const b = $("copyRelay");
+  try {
+    const code = await (await fetch("relay/worker.js", { cache: "no-store" })).text();
+    await navigator.clipboard.writeText(code);
+    b.textContent = "Copied ✓";
+  } catch {
+    window.open("https://github.com/BBelk/OwletToHuckleberry/blob/main/relay/worker.js", "_blank", "noopener");
+    b.textContent = "Opened the code in a new tab";
+  }
+  setTimeout(() => { b.textContent = "Copy relay code"; }, 3000);
+});
+
 loadSaved();
 setRange(7);
+if (!$("relay").value) $("relayHelp").open = true;
 </script>
 </body>
 </html>

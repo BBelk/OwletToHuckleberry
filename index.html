@@ -125,24 +125,25 @@
     </div>
     <label class="inline"><input id="remember" type="checkbox">
       Remember logins on this device (saved unencrypted in this browser only; untick to erase)</label>
-    <div class="actions"><button id="oGo" type="submit">Load Owlet history</button></div>
+    <div class="row3">
+      <div><label for="from">From</label><input id="from" type="date" required></div>
+      <div><label for="to">To</label><input id="to" type="date" required></div>
+      <div class="actions" style="margin-top:0">
+        <button class="chip" type="button" data-days="1">Last night</button>
+        <button class="chip" type="button" data-days="7">7 days</button>
+        <button class="chip" type="button" data-days="30">30 days</button>
+      </div>
+    </div>
+    <div class="hint">Only this range is downloaded from Owlet. Longer ranges take longer.</div>
+    <div class="actions"><button id="oGo" type="submit">Load Owlet sleeps</button></div>
     <ol id="oSteps" class="steps"></ol>
   </form>
 
   <!-- 2. Pick dates -->
   <section id="pick" class="panel hidden">
-    <h2><span class="n">2</span>Choose dates</h2>
+    <h2><span class="n">2</span>Owlet sleeps</h2>
     <p id="loaded"></p>
-    <div class="row3">
-      <div><label for="from">From</label><input id="from" type="date"></div>
-      <div><label for="to">To</label><input id="to" type="date"></div>
-      <div class="actions" style="margin-top:0">
-        <button class="chip" type="button" data-days="7">7 days</button>
-        <button class="chip" type="button" data-days="30">30 days</button>
-        <button class="chip" type="button" data-days="all">All</button>
-      </div>
-    </div>
-    <div class="actions">
+    <div class="actions" style="margin-top:0">
       <span id="rangeCount" class="count"></span>
       <button id="csv" class="secondary" type="button">Download CSV</button>
     </div>
@@ -308,7 +309,8 @@ async function owletLogin() {
   return { base: R.base, headers: { Authorization: "auth_token " + a.access_token } };
 }
 
-async function fetchHistory(api, dsn, s) {
+// Pages backwards (newest first, 100 per call) and stops once it's a day past `sinceMs`.
+async function fetchHistory(api, dsn, s, sinceMs) {
   const url = `${api.base}/dsns/${dsn}/properties/MONITORING_SUMMARY/datapoints.json`;
   const seen = new Map();
   let end = null;
@@ -322,8 +324,9 @@ async function fetchHistory(api, dsn, s) {
     }
     if (!added) break;
     const oldest = pts.map((p) => p.created_at).sort()[0];
-    end = new Date(Date.parse(oldest) - 1000).toISOString().replace(/\.\d+Z$/, "Z");
     s.note(`${seen.size} summaries, back to ${oldest.slice(0, 10)}`);
+    if (Date.parse(oldest) < sinceMs - DAY) break;
+    end = new Date(Date.parse(oldest) - 1000).toISOString().replace(/\.\d+Z$/, "Z");
   }
   return [...seen.values()];
 }
@@ -413,21 +416,20 @@ $("owletForm").addEventListener("submit", async (ev) => {
     if (!devices.length) { s.fail("No Owlet devices on this account"); return; }
     s.ok(devices.map((d) => d.device.product_name).join(", "));
 
+    const [from, to] = rangeDates();
     const found = [];
     for (const d of devices) {
-      s = oStep(`Download sleep history${devices.length > 1 ? " for " + d.device.product_name : ""}`);
-      const pts = await fetchHistory(api, d.device.dsn, s);
-      const got = sessionsFrom(pts);
-      s.ok(`${pts.length} summaries, ${got.length} sleep sessions`);
+      s = oStep(`Download sleeps since ${$("from").value}${devices.length > 1 ? " for " + d.device.product_name : ""}`);
+      const pts = await fetchHistory(api, d.device.dsn, s, from.getTime());
+      const got = sessionsFrom(pts).filter((x) => x.start >= from && x.start < to);
+      s.ok(`${got.length} sleep${got.length === 1 ? "" : "s"} in range`);
       found.push(...got);
     }
-    if (!found.length) { oStep("No sleep sessions found").fail("The account's history had no completed sleeps."); return; }
     sessions = found.sort((a, b) => a.start - b.start);
-    $("loaded").textContent =
-      `Found ${sessions.length} sleeps from ${sessions[0].start.toLocaleDateString()} to ` +
-      `${sessions[sessions.length - 1].end.toLocaleDateString()}. Times are in your local time zone.`;
-    setRange(7);
+    loaded = { from: $("from").value, to: $("to").value };
+    render();
     $("pick").classList.remove("hidden");
+    if (!sessions.length) return;
     $("hbForm").classList.remove("hidden");
     if (hb) await refreshHb();
   } catch (e) {
@@ -444,16 +446,24 @@ const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate(
 const fmt = (d) => `${ymd(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const hours = (s) => ((s.end - s.start) / 3600000).toFixed(2);
 
+let loaded = null; // {from, to} date strings of the last Owlet download
+
 function setRange(days) {
-  const last = sessions[sessions.length - 1].start;
-  $("to").value = ymd(last);
-  $("from").value = days === "all" ? ymd(sessions[0].start) : ymd(new Date(last - (days - 1) * DAY));
+  const today = new Date();
+  $("to").value = ymd(today);
+  $("from").value = ymd(new Date(today - days * DAY));
   render();
 }
 
+// [from, to) as Dates, in local time; "to" includes the whole end day.
+function rangeDates() {
+  const from = new Date($("from").value + "T00:00");
+  const to = new Date(new Date($("to").value + "T00:00").getTime() + DAY);
+  return [from, to];
+}
+
 function inRange() {
-  const from = $("from").value ? new Date($("from").value + "T00:00") : new Date(0);
-  const to = $("to").value ? new Date(new Date($("to").value + "T00:00").getTime() + DAY) : new Date(8.64e15);
+  const [from, to] = rangeDates();
   return sessions.filter((s) => s.start >= from && s.start < to);
 }
 
@@ -463,6 +473,12 @@ const TAGS = {
 };
 
 function render() {
+  if (loaded) {
+    const outside = $("from").value < loaded.from || $("to").value > loaded.to;
+    $("loaded").textContent =
+      `Loaded ${loaded.from} to ${loaded.to}. Times are in your local time zone.` +
+      (outside ? " The dates above go beyond that, so click Load Owlet sleeps again to fetch them." : "");
+  }
   const list = inRange();
   const tbody = $("rows");
   tbody.textContent = "";
@@ -500,7 +516,7 @@ function updateCounts() {
 $("from").addEventListener("change", render);
 $("to").addEventListener("change", render);
 document.querySelectorAll("[data-days]").forEach((b) =>
-  b.addEventListener("click", () => setRange(b.dataset.days === "all" ? "all" : +b.dataset.days)));
+  b.addEventListener("click", () => setRange(+b.dataset.days)));
 $("all").addEventListener("change", () => {
   inRange().forEach((s) => { if (s.hb !== "done") s.sel = $("all").checked; });
   render();
@@ -561,7 +577,8 @@ async function hbExisting(cid, from, to, s) {
 async function refreshHb() {
   const s = hStep("Check which sleeps are already in Huckleberry");
   const cid = $("child").value;
-  const from = sessions[0].start / 1000 - DAY / 1000, to = Date.now() / 1000 + DAY / 1000;
+  if (!sessions.length) { s.ok("No Owlet sleeps loaded to compare"); render(); return; }
+  const from = sessions[0].start / 1000 - DAY / 1000, to = sessions[sessions.length - 1].end / 1000 + DAY / 1000;
   const have = await hbExisting(cid, from, to, s);
   for (const x of sessions) {
     if (x.hb === "done") continue;
@@ -683,6 +700,7 @@ $("import").addEventListener("click", async () => {
 });
 
 loadSaved();
+setRange(7);
 </script>
 </body>
 </html>

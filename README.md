@@ -23,8 +23,9 @@ writes use [py-huckleberry-api](https://github.com/Woyken/py-huckleberry-api).
 
 Everything runs in your browser:
 
-1. Sign in to Owlet and load the full sleep history.
-2. Pick a date range. You can download it as CSV.
+1. Sign in to Owlet, pick a date range (last night, 7 or 30 days, or any dates) and load just
+   those sleeps.
+2. Review them in a table. You can download them as CSV.
 3. Sign in to Huckleberry. The page marks which sleeps are already logged (by overlapping time)
    and ticks only the new ones. Change the selection if you like, then click **Import selected**.
 

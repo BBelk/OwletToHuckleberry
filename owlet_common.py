@@ -15,6 +15,7 @@ CONFIG_PATH = ROOT / "config.json"
 
 
 def load_config() -> dict:
+    """Read config.json (logins + time zone). It's git-ignored: never commit it."""
     if not CONFIG_PATH.exists():
         sys.exit(
             f"Missing {CONFIG_PATH.name}. Copy config.example.json to config.json and fill it in."
@@ -37,6 +38,11 @@ async def pick_child(hb, name: str | None) -> str:
 
 
 async def owlet_login(cfg: dict, session: aiohttp.ClientSession) -> tuple[OwletAPI, list[Sock]]:
+    """Sign in to Owlet with pyowletapi and return the API client plus the account's socks.
+
+    pyowletapi does the 3-step login (Google sign-in -> Owlet mini token -> Ayla access
+    token). From Python there are no browser CORS rules, so no relay is needed here.
+    """
     o = cfg["owlet"]
     api = OwletAPI(o.get("region", "world"), o["email"], o["password"], session=session)
     await api.authenticate()

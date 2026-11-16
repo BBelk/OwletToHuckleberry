@@ -63,6 +63,11 @@ def parse_pb(b: bytes) -> list[tuple[int, int | bytes]]:
 
 
 def summary_frames(value: str) -> list[bytes]:
+    """Split one base64 datapoint value into its protobuf messages.
+
+    Padding is sometimes missing, so it's re-added. Byte 0 is a version byte; each frame
+    after it is [u16 big-endian length][u8 checksum][message].
+    """
     raw = base64.b64decode(value + "=" * (-len(value) % 4))
     i, out = 1, []
     while i + 3 <= len(raw):
@@ -73,8 +78,12 @@ def summary_frames(value: str) -> list[bytes]:
 
 
 def sessions_from_datapoints(points: list[dict]) -> list[tuple[datetime, datetime]]:
-    """Return Owlet's completed sleep sessions as (start, end) UTC datetimes."""
-    ends: dict[int, set[int]] = {}
+    """Return Owlet's completed sleep sessions as (start, end) UTC datetimes.
+
+    A session shows up in every 10-minute record while it's ongoing, each with a later
+    end time, so we group by start time and keep the latest end.
+    """
+    ends: dict[int, set[int]] = {}  # session start (unix s) -> end times seen
     for p in points:
         if not p.get("value"):
             continue

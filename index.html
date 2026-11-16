@@ -229,6 +229,20 @@
 </main>
 
 <script>
+// =====================================================================================
+// Owlet -> Huckleberry web page. Everything runs here in the browser; there is no server
+// except the user's own relay (relay/worker.js) for one Owlet login step.
+//
+// Flow:
+//   1. Get sleeps: sign in to Owlet (3-step login, middle step via the relay), download the
+//      MONITORING_SUMMARY history back to the chosen From date, decode Owlet's sleep
+//      sessions. Or read them from a CSV exported earlier.
+//   2. Show them in a table filtered by the date range; CSV download of what's shown.
+//   3. Sign in to Huckleberry (Firebase), tag each sleep "New" or "Already there" by time
+//      overlap, and write the ticked ones in the same shape the Huckleberry app uses.
+//
+// The decoding and Huckleberry code is mirrored in nightly/worker.js; keep the two in sync.
+// =====================================================================================
 "use strict";
 
 // ---------------------------------------------------------------- constants
@@ -258,6 +272,8 @@ const $ = (id) => document.getElementById(id);
 const DAY = 86400000;
 
 // sessions: [{start: Date, end: Date, hb: "unknown"|"new"|"have"|"done"|"err", sel: bool}]
+// Page state. `sessions` is what the table shows; each entry's `hb` tag says how it
+// compares with Huckleberry ("unknown" until connected) and `sel` is its tick box.
 let sessions = [];
 let hb = null; // {token, uid, tokenAt, children: [{cid, nickname}]}
 
@@ -265,6 +281,9 @@ let hb = null; // {token, uid, tokenAt, children: [{cid, nickname}]}
 
 const FIELDS = ["oEmail", "oPassword", "region", "relay", "hEmail", "hPassword"];
 
+// Optional "Remember logins on this device": everything goes in this browser's
+// localStorage as plain text and is never sent anywhere. Every access is wrapped in try/catch
+// because storage can be blocked (private windows, strict privacy settings).
 function loadSaved() {
   try {
     const s = JSON.parse(localStorage.getItem(STORE) || "null");
@@ -289,6 +308,8 @@ FIELDS.forEach((f) => $(f).addEventListener("change", () => { if ($("remember").
 
 // ---------------------------------------------------------------- step log + fetch
 
+// Progress list under each form: stepper("oSteps")("Doing X") adds a row with a spinner and
+// returns {ok, fail, note} to finish or update it.
 function stepper(listId) {
   return (label) => {
     const li = document.createElement("li");
@@ -305,6 +326,9 @@ const hStep = stepper("hSteps");
 
 class Shown extends Error {}
 
+// fetch() + JSON with errors shown on the step row. A thrown TypeError (no response at all)
+// almost always means the browser blocked the request for CORS reasons, so we say that,
+// rather than show the browser's vague "Failed to fetch". `Shown` marks errors already displayed.
 async function call(s, url, opts) {
   let r;
   try {
@@ -324,6 +348,12 @@ async function call(s, url, opts) {
 
 // ---------------------------------------------------------------- Owlet
 
+// Owlet's 3-step login:
+//   1. Google Identity Toolkit checks the email + password (X-Android-* headers identify the
+//      Owlet app; Google requires them) and returns a Google ID token.
+//   2. Owlet's "mini" token service swaps that for a mini token. It sends no CORS headers,
+//      so this one request goes through the user's relay.
+//   3. Ayla (Owlet's device-cloud provider) swaps the mini token for an access token.
 async function owletLogin() {
   const region = $("region").value, R = OWLET[region];
   let s = oStep("Sign in with Google (Owlet's login provider)");
@@ -354,6 +384,9 @@ async function owletLogin() {
 }
 
 // Pages backwards (newest first, 100 per call) and stops once it's a day past `sinceMs`.
+// Ayla returns at most 100 datapoints per request, newest first. We page backwards with
+// created_at_end_date (one second before the oldest we have) and stop a day past the From
+// date; the extra day catches sleeps that started before it but were summarized later.
 async function fetchHistory(api, dsn, s, sinceMs) {
   const url = `${api.base}/dsns/${dsn}/properties/MONITORING_SUMMARY/datapoints.json`;
   const seen = new Map();
@@ -385,6 +418,9 @@ function b64bytes(s) {
   return out;
 }
 
+// Minimal protobuf reader: [fieldNumber, value] pairs. Varints become numbers (multiplying,
+// not bit-shifting, so timestamps above 2^31 survive), length-delimited fields stay as bytes
+// for nested decoding, and fixed 32/64-bit fields are skipped.
 function parsePb(b) {
   const out = [];
   let i = 0;
@@ -407,6 +443,8 @@ function parsePb(b) {
   return out;
 }
 
+// Split a decoded value into its protobuf frames: skip the version byte, then each frame is
+// [2-byte big-endian length][1-byte checksum][message].
 function frames(raw) {
   const out = [];
   for (let i = 1; i + 3 <= raw.length;) {
@@ -417,6 +455,9 @@ function frames(raw) {
   return out;
 }
 
+// Field 25 of each 10-minute record = Owlet's own sleep session {1: {1: start, 2: end}}.
+// An ongoing session appears in many records with growing end times, so group by start and
+// keep the latest end. Returns sleeps sorted oldest first.
 function sessionsFrom(points) {
   const ends = new Map();
   for (const p of points) {
@@ -480,6 +521,8 @@ $("owletForm").addEventListener("submit", async (ev) => {
 // ---------------------------------------------------------------- CSV file as the source
 
 // Accepts "2026-11-14 19:30" (local time, what this page and backfill.py write) or full ISO times.
+// CSV import: the same "start,end,hours" format this page and backfill.py export. Lines
+// that don't parse are counted and skipped; a header row is ignored.
 function parseTime(x) {
   if (!/^\d{4}-\d\d-\d\d[ T]\d\d:\d\d/.test(x || "")) return null;
   const d = new Date(x.replace(" ", "T"));
@@ -535,6 +578,7 @@ const hours = (s) => ((s.end - s.start) / 3600000).toFixed(2);
 
 let loaded = null; // {from, to, source} of the sleeps currently loaded
 
+// Quick-pick buttons: "Last night" = yesterday and today, otherwise the last N days.
 function setRange(days) {
   const today = new Date();
   $("to").value = ymd(today);
@@ -559,6 +603,8 @@ const TAGS = {
   done: ["done", "Imported ✓"], err: ["err", "Failed"],
 };
 
+// Redraw the table from `sessions` (newest first) and update the counts and buttons.
+// Tick boxes are disabled until Huckleberry is connected, since "New" isn't known before then.
 function render() {
   if (loaded) {
     const outside = $("from").value < loaded.from || $("to").value > loaded.to;
@@ -623,6 +669,12 @@ $("csv").addEventListener("click", () => {
 
 const num = (v) => (v ? Number(v.integerValue ?? v.doubleValue ?? 0) : 0);
 
+// Huckleberry runs on Firebase (project "simpleintervals"). Data layout:
+//   users/{uid}                      childList: [{cid, nickname}]
+//   sleep/{childId}                  prefs.lastSleep, the app's "last sleep" summary
+//   sleep/{childId}/intervals/{id}   one document per sleep
+//   ... /intervals/{id} with multi   older sleeps bundled into one document
+// Firestore's REST API wraps each value in its type, e.g. {doubleValue: 1.5}.
 async function hbLogin(s) {
   const a = await call(s, `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${HB_KEY}`, {
     method: "POST",
@@ -632,11 +684,14 @@ async function hbLogin(s) {
   return { token: a.idToken, uid: a.localId, tokenAt: Date.now() };
 }
 
+// Firebase ID tokens last an hour; sign in again after 45 minutes in case the page sits open.
 async function hbAuth() {
   if (hb && Date.now() - hb.tokenAt > 45 * 60000) Object.assign(hb, await hbLogin(hStep("Refresh Huckleberry login")));
   return { "Content-Type": "application/json", Authorization: "Bearer " + hb.token };
 }
 
+// [start, end] in seconds of sleeps already in Huckleberry. Two queries, because Firestore
+// can't filter inside the bundled "multi" documents.
 async function hbExisting(cid, from, to, s) {
   const headers = await hbAuth();
   const q = (where) => call(s, `${HB_DB}/sleep/${cid}:runQuery`, {
@@ -662,6 +717,9 @@ async function hbExisting(cid, from, to, s) {
   return out;
 }
 
+// Tag each loaded sleep "have" if it overlaps any existing Huckleberry sleep, else "new"
+// (ticked by default). Overlap rather than exact match, because hand-logged times never
+// line up exactly with Owlet's.
 async function refreshHb() {
   const s = hStep("Check which sleeps are already in Huckleberry");
   const cid = $("child").value;
@@ -710,12 +768,16 @@ $("child").addEventListener("change", () => {
   refreshHb().catch((e) => { if (!(e instanceof Shown)) hStep("Unexpected error").fail(e.message); });
 });
 
+// n random bytes as 2n hex characters, for document ids.
 function hex(n) {
   const b = crypto.getRandomValues(new Uint8Array(n));
   return [...b].map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, n * 2);
 }
 
 // Matches what the Huckleberry app writes for a manual sleep entry.
+// One new sleep. The id format "<ms timestamp>-<20 hex>" and the fields match the app's own
+// manual entries. offset = minutes behind UTC (getTimezoneOffset(), e.g. 300 for New York in
+// winter), which is what the app stores. currentDocument.exists=false refuses to overwrite.
 async function logSleep(cid, s) {
   const id = `${Date.now()}-${hex(10)}`;
   const start = s.start / 1000, end = s.end / 1000;
@@ -736,6 +798,8 @@ async function logSleep(cid, s) {
 }
 
 // Keep the app's "last sleep" summary current if we imported something newer.
+// The updateMask limits this PATCH to the three listed fields; the rest of the document
+// (other settings, timers) is left alone. Skipped if Huckleberry already has a newer sleep.
 async function updateLastSleep(cid, latest, s) {
   const headers = await hbAuth();
   const doc = await call(s, `${HB_DB}/sleep/${cid}`, { headers });

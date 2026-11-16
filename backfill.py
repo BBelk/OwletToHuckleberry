@@ -33,12 +33,16 @@ async def main(args: argparse.Namespace) -> None:
     since = datetime.fromisoformat(args.since).replace(tzinfo=tz) if args.since else None
 
     async with aiohttp.ClientSession() as session:
+        # 1. Owlet: download the summary history and decode the sleep sessions.
+        #    (Uses the first sock on the account.)
         print("Reading Owlet history...")
         api, socks = await owlet_login(cfg, session)
         points = await fetch_summary_history(api, session, socks[0].serial, since)
         sessions = sessions_from_datapoints(points)
         if since:
             sessions = [s for s in sessions if s[0] >= since]
+        # 2. Always save a CSV (local time) so there's a copy, even on a dry run. The web
+        #    page can import this file too.
         out = ROOT / "owlet_sleep_export.csv"
         with out.open("w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
@@ -51,6 +55,9 @@ async def main(args: argparse.Namespace) -> None:
         if not sessions or args.export_only:
             return
 
+        # 3. Huckleberry: anything overlapping an existing sleep (hand-logged or imported
+        #    earlier) is skipped. Overlap rather than exact match, because hand-logged times
+        #    never line up exactly with Owlet's.
         hb = HuckleberryAPI(email=h["email"], password=h["password"], timezone=h["timezone"],
                             websession=session)
         await hb.authenticate()
@@ -72,6 +79,7 @@ async def main(args: argparse.Namespace) -> None:
         if not args.write:
             print("Dry run. Re-run with --write to log the new ones to Huckleberry.")
             return
+        # 4. Write. ensure_session() refreshes the Huckleberry login if it expired mid-run.
         for a, b in todo:
             await hb.ensure_session()
             await hb.log_sleep(cid, start_time=a, end_time=b)
